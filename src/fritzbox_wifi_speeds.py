@@ -87,35 +87,45 @@ import copy
 import json
 
 
-key_ghz24 = "ghz24"
-key_ghz5  = "ghz5"
-key_ghz6  = "ghz6"
-key_eth   = "eth"
+key_ghz24    = "ghz24"
+key_ghz5     = "ghz5"
+key_ghz6     = "ghz6"
+key_wifi_sum = "wifi_sum"
+key_eth      = "eth"
 
 
 
-def makeKnownBandDescriptor(id, descr, is_symmetric) -> dict:
+def makeKnownBandDescriptor(id, descr, is_symmetric, auto_graph) -> dict:
   return {
     "id":           id,
     "descr":        descr,
-    "is_symmetric": is_symmetric
+    "is_symmetric": is_symmetric,
+    "auto_graph":   auto_graph
   }
 # end makeKnownBandDescriptor
 
 
 
-knownBands = { key_ghz24: makeKnownBandDescriptor(id           = key_ghz24,
-                                                  descr        = "Wifi 2.4 GHz",
-                                                  is_symmetric = 0),
-               key_ghz5:  makeKnownBandDescriptor(id           = key_ghz5,
-                                                  descr        = "Wifi 5 GHz",
-                                                  is_symmetric = 0),
-               key_ghz6:  makeKnownBandDescriptor(id           = key_ghz6,
-                                                  descr        = "Wifi 6 GHz",
-                                                  is_symmetric = 0),
-               key_eth:   makeKnownBandDescriptor(id           = key_eth,
-                                                  descr        = "Ethernet",
-                                                  is_symmetric = 1),
+knownBands = { key_ghz24:     makeKnownBandDescriptor(id           = key_ghz24,
+                                                      descr        = "Wifi 2.4 GHz",
+                                                      is_symmetric = False,
+                                                      auto_graph   = True),
+               key_ghz5:      makeKnownBandDescriptor(id           = key_ghz5,
+                                                      descr        = "Wifi 5 GHz",
+                                                      is_symmetric = False,
+                                                      auto_graph   = True),
+               key_ghz6:      makeKnownBandDescriptor(id           = key_ghz6,
+                                                      descr        = "Wifi 6 GHz",
+                                                      is_symmetric = False,
+                                                      auto_graph   = True),
+               key_wifi_sum:  makeKnownBandDescriptor(id           = key_wifi_sum,
+                                                      descr        = "Wifi Total",
+                                                      is_symmetric = False,
+                                                      auto_graph   = False),
+               key_eth:       makeKnownBandDescriptor(id           = key_eth,
+                                                      descr        = "Ethernet",
+                                                      is_symmetric = True,
+                                                      auto_graph   = True),
               }
 
 
@@ -448,34 +458,76 @@ def getGraphName(bandKey):
 # end getGraphName
 
 
+def getGraphNameWithRxTx(bandKey, rxtxConfig, rxOrTx):
+  baseGraphName = getGraphName(bandKey)
+  return f"{baseGraphName}{rxtxConfig[f'{rxOrTx}_suffix']}"
+# end getGraphNameWithRxTx
+
+
 def getRxTxConfigParams(bandKey):
   isSymmetric   = knownBands[bandKey]["is_symmetric"]
 
   return {
-    "rx_suffix" : "" if isSymmetric else '_rx',
-    "rx_prefix" : "" if isSymmetric else 'RX ',
-    "tx_suffix" : "" if isSymmetric else '_tx',
-    "tx_prefix" : "" if isSymmetric else 'TX ',
-    "show_rx"   : 1,
-    "show_tx"   : 0  if isSymmetric else 1,
+    "rx_suffix"       : "" if isSymmetric else '_rx',
+    "rx_title_suffix" : "" if isSymmetric else ' - RX',
+    "rx_prefix"       : "" if isSymmetric else 'RX ',
+    "tx_suffix"       : "" if isSymmetric else '_tx',
+    "tx_title_suffix" : "" if isSymmetric else ' - TX',
+    "tx_prefix"       : "" if isSymmetric else 'TX ',
+    "show_rx"         : 1,
+    "show_tx"         : 0  if isSymmetric else 1,
   }
 
 # end getRxTxConfigParams
 
 
 def printConfig(devicesByBands, debug = False):
+  
+  sumWifiSpeedInfos = {
+    "deviceBandKeys": {
+      # ds_name : [ list of band keys ]
+    },
+    "ds_name2device": {
+      # ds_name: device
+    },
+    "all_devices": []
+  }
 
   for bandKey,devices in devicesByBands.items():
+    
+    if not knownBands[bandKey]["auto_graph"]:
+      continue
+    # end if
+    
     bandDescr     = knownBands[bandKey]["descr"]
     graphName     = getGraphName(bandKey)
     sortedDevices = sorted(devices, key = lambda x: x["name"])
     dsNames       = [x["ds_name"] for x in sortedDevices];
+    
+    if ("wifi" in bandDescr.lower()):
+      for device in sortedDevices:
+        ds_name = device["ds_name"]
+        
+        if (ds_name not in sumWifiSpeedInfos["ds_name2device"]):
+          sumWifiSpeedInfos["ds_name2device"][ds_name] = device
+        # end if new 
+        
+        if ds_name not in sumWifiSpeedInfos["deviceBandKeys"]:
+          sumWifiSpeedInfos["deviceBandKeys"][ds_name] = []
+        # end if
+        
+        sumWifiSpeedInfos["deviceBandKeys"][ds_name].append(bandKey)
+        
+        sumWifiSpeedInfos["all_devices"].append(device)
+      # end for each device
+      
+    # end if wifi
 
     rxtxCfg = getRxTxConfigParams(bandKey)
 
     if (rxtxCfg['show_rx']):
-      print(f"multigraph {graphName}{rxtxCfg['rx_suffix']}")
-      print(f"graph_title Device Speeds ({rxtxCfg['rx_prefix']}{bandDescr})")
+      print(f"multigraph {getGraphNameWithRxTx(bandKey, rxtxCfg, 'rx')}")
+      print(f"graph_title Device Speeds ({bandDescr}{rxtxCfg['rx_title_suffix']})")
       print("graph_vlabel Bit/s")
       print("graph_args --base 1000")
       # print("graph_args --logarithmic")
@@ -495,8 +547,8 @@ def printConfig(devicesByBands, debug = False):
 
     
     if (rxtxCfg['show_tx']):
-      print(f"multigraph {graphName}{rxtxCfg['tx_suffix']}")
-      print(f"graph_title Device Speeds ({rxtxCfg['tx_prefix']}{bandDescr})")
+      print(f"multigraph {getGraphNameWithRxTx(bandKey, rxtxCfg, 'tx')}")
+      print(f"graph_title Device Speeds ({bandDescr}{rxtxCfg['tx_title_suffix']})")
       print("graph_vlabel Bit/s")
       print("graph_args --base 1000")
       # print("graph_args --logarithmic")
@@ -516,6 +568,84 @@ def printConfig(devicesByBands, debug = False):
     
   # end for each band
   
+  
+  bandKey       = key_wifi_sum
+  bandDescr     = knownBands[bandKey]["descr"]
+  graphName     = getGraphName(bandKey)
+  rxtxCfg       = getRxTxConfigParams(bandKey)
+  devices       = sumWifiSpeedInfos["all_devices"]
+  sortedDevices = sorted(devices, key = lambda x: x["name"])
+  dsNames       = [x["ds_name"] for x in sortedDevices];
+  
+  for rxtxSwitch in ["rx", "tx"]:
+    print(f"multigraph {getGraphNameWithRxTx(bandKey, rxtxCfg, rxtxSwitch)}")
+    print(f"graph_title Device Speeds ({bandDescr}{rxtxCfg[f'{rxtxSwitch}_title_suffix']})")
+    print("graph_vlabel Bit/s")
+    print("graph_args --base 1000")
+    # print("graph_args --logarithmic")
+    print("graph_category network")
+    print("update no")
+    
+    
+    ds_refs = {
+      # list of referenced DS names to be summed up
+      # ds_name: [ "ref_ds_1", "ref_ds_2", ... ]
+    }
+    
+    graph_order_ref_mappings = {
+      # "ref_name": "org_ds"
+    }
+    
+    # create mapping of 
+    #        "reference DS names" (aka ref_name)
+    #   and  "fully qualified referenc_ed_ DS names" (aka org_ds)
+    for dev in sortedDevices:
+      ds     = dev["ds_name"]
+      
+      ds_refs[ds] = []
+      
+      for org_bandKey in sorted(sumWifiSpeedInfos["deviceBandKeys"][ds]):      
+        org_graphName = getGraphNameWithRxTx(org_bandKey, rxtxCfg, rxtxSwitch)
+        org_ds        = f"{org_graphName}.{ds}"
+        
+        ref_name      = f"{ds}_{org_bandKey}"
+        
+        if ds not in ds_refs:
+          ds_refs[ds] = []
+        # end if not defined yet
+        
+        ds_refs[ds].append(ref_name)
+        
+        graph_order_ref_mappings[ref_name] = org_ds
+      # end for each org_bandKey
+      
+    # end for each device
+    
+    str_list_local_ds_names = dsNames
+    str_list_ref_ds_defs    = [f"{x}={graph_order_ref_mappings[x]}" for x in sorted(graph_order_ref_mappings.keys())]
+    str_list_ref_ds_names   = sorted(graph_order_ref_mappings.keys())
+                                        
+    print(f"graph_order {" ".join(str_list_local_ds_names + str_list_ref_ds_defs + str_list_ref_ds_names)}")
+    
+    # do not plot the ref data
+    for ref_ds in sorted(graph_order_ref_mappings.keys()):
+      print(f"{ref_ds}.graph no")
+      print(f"{ref_ds}.label n/a")
+    # end for each ref
+    
+      
+    for dev in sortedDevices:
+      ds     = dev["ds_name"]
+      label  = dev['name']
+      refs   = ds_refs[ds]
+      
+      print(f"{ds}.label {label}")
+      print(f"{ds}.min 0")
+      print(f"{ds}.cdef {",".join(refs + ["ADDNAN"] * (len(refs) - 1))},1000000,*")
+    # end for each device
+  # end for each "rx" or "tx"
+  
+  
 # end  printConfig
 
 
@@ -528,6 +658,10 @@ def printValues(devicesByBands, debug = False):
   # end if
   
   for bandKey,devices in devicesByBands.items():
+
+    if not knownBands[bandKey]["auto_graph"]:
+      continue
+    # end if
 
     if debug :
       pp.pprint({"printing band": { "bandKey": bandKey, "devices": devices}})
