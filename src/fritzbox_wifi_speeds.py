@@ -431,7 +431,7 @@ def getWifiSpeeds(oneFritzBoxInterface,
       # Therefore, we have to check here, if the mac is alread in the list.
       # If it happens, we merge name strings and sum up current speeds
       
-      existingDevices = [x for x in devicesByBands[bandKey] if x["mac"] == mac]
+      existingDevices = [x for x in devicesByBands[bandKey] if x["ds_name"] == deviceEntry["ds_name"]]
       
       # should actually not happen, but seems that Fritzbox sometimes returns old name records
       if any(existingDevices):
