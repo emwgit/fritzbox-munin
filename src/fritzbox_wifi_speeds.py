@@ -426,7 +426,24 @@ def getWifiSpeeds(oneFritzBoxInterface,
                        "ds_name":              f"dev_{mac4dsName}"
                      }
 
-      devicesByBands[bandKey].append(deviceEntry)
+      # It may happen - not yet understood - that the fritzbox returns multiple devices 
+      # (names) for the same device MAC, e.g. after renaming in the FritzOS GUI
+      # Therefore, we have to check here, if the mac is alread in the list.
+      # If it happens, we merge name strings and sum up current speeds
+      
+      existingDevices = [x for x in devicesByBands[bandKey] if x["mac"] == mac]
+      
+      # should actually not happen, but seems that Fritzbox sometimes returns old name records
+      if any(existingDevices):
+        assert len(existingDevices) == 1, "internal error, this should not happen"
+        for dev in existingDevices:
+          dev["name"]                 += f" / {deviceEntry["name"]}"
+          dev["uid"]                  += f" / {deviceEntry["uid"]}"
+          dev["rxSpeed_inMBitPerSec"] += f" / {deviceEntry["rxSpeed_inMBitPerSec"]}"
+          dev["txSpeed_inMBitPerSec"] += f" / {deviceEntry["txSpeed_inMBitPerSec"]}"
+        # end for each existing dev
+      else:
+        devicesByBands[bandKey].append(deviceEntry)
     # end for each band
     
     if debug:
@@ -608,7 +625,7 @@ def printConfig(devicesByBands, debug = False):
         org_graphName = getGraphNameWithRxTx(org_bandKey, rxtxCfg, rxtxSwitch)
         org_ds        = f"{org_graphName}.{ds}"
         
-        ref_name      = f"{ds}_{org_bandKey}"
+        ref_name      = f"{ds}_{org_bandKey}_{rxtxSwitch}"
         
         if ds not in ds_refs:
           ds_refs[ds] = []
@@ -623,9 +640,8 @@ def printConfig(devicesByBands, debug = False):
     
     str_list_local_ds_names = dsNames
     str_list_ref_ds_defs    = [f"{x}={graph_order_ref_mappings[x]}" for x in sorted(graph_order_ref_mappings.keys())]
-    str_list_ref_ds_names   = sorted(graph_order_ref_mappings.keys())
                                         
-    print(f"graph_order {" ".join(str_list_local_ds_names + str_list_ref_ds_defs + str_list_ref_ds_names)}")
+    print(f"graph_order {" ".join(str_list_local_ds_names + str_list_ref_ds_defs)}")
     
     # do not plot the ref data
     for ref_ds in sorted(graph_order_ref_mappings.keys()):
