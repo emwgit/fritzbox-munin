@@ -369,8 +369,8 @@ def getWifiSpeeds(oneFritzBoxInterface,
         propString   = prop["txt"]
         match = wifiSpeedRegEx.search(propString)
         if (match):
-          downstream = match.group(3)
-          upstream   = match.group(5)
+          downstream = float(match.group(3))
+          upstream   = float(match.group(5))
           unit       = match.group(7)
           scale      = 1 if unit == "M" else (1000 if unit == "G" else 1.0/1000.0)
           
@@ -437,10 +437,15 @@ def getWifiSpeeds(oneFritzBoxInterface,
       if any(existingDevices):
         assert len(existingDevices) == 1, "internal error, this should not happen"
         for dev in existingDevices:
+          if (debug):
+            pp.pprint({f"existing dev in band {bandKey}":   dev,
+                       f"new device entry":                 deviceEntry,
+                      })
+          # end if debug    
           dev["name"]                 += f" / {deviceEntry["name"]}"
           dev["uid"]                  += f" / {deviceEntry["uid"]}"
-          dev["rxSpeed_inMBitPerSec"] += f" / {deviceEntry["rxSpeed_inMBitPerSec"]}"
-          dev["txSpeed_inMBitPerSec"] += f" / {deviceEntry["txSpeed_inMBitPerSec"]}"
+          dev["rxSpeed_inMBitPerSec"] += deviceEntry["rxSpeed_inMBitPerSec"]
+          dev["txSpeed_inMBitPerSec"] += deviceEntry["txSpeed_inMBitPerSec"]
         # end for each existing dev
       else:
         devicesByBands[bandKey].append(deviceEntry)
@@ -502,12 +507,11 @@ def printConfig(devicesByBands, debug = False):
   
   sumWifiSpeedInfos = {
     "deviceBandKeys": {
-      # ds_name : [ list of band keys ]
+      # ds_name : set () # set of band keys
     },
     "ds_name2device": {
       # ds_name: device
     },
-    "all_devices": []
   }
 
   for bandKey,devices in devicesByBands.items():
@@ -530,12 +534,11 @@ def printConfig(devicesByBands, debug = False):
         # end if new 
         
         if ds_name not in sumWifiSpeedInfos["deviceBandKeys"]:
-          sumWifiSpeedInfos["deviceBandKeys"][ds_name] = []
+          sumWifiSpeedInfos["deviceBandKeys"][ds_name] = set()
         # end if
         
-        sumWifiSpeedInfos["deviceBandKeys"][ds_name].append(bandKey)
+        sumWifiSpeedInfos["deviceBandKeys"][ds_name].add(bandKey)
         
-        sumWifiSpeedInfos["all_devices"].append(device)
       # end for each device
       
     # end if wifi
@@ -590,7 +593,7 @@ def printConfig(devicesByBands, debug = False):
   bandDescr     = knownBands[bandKey]["descr"]
   graphName     = getGraphName(bandKey)
   rxtxCfg       = getRxTxConfigParams(bandKey)
-  devices       = sumWifiSpeedInfos["all_devices"]
+  devices       = sumWifiSpeedInfos["ds_name2device"].values()
   sortedDevices = sorted(devices, key = lambda x: x["name"])
   dsNames       = [x["ds_name"] for x in sortedDevices];
   
@@ -621,7 +624,7 @@ def printConfig(devicesByBands, debug = False):
       
       ds_refs[ds] = []
       
-      for org_bandKey in sorted(sumWifiSpeedInfos["deviceBandKeys"][ds]):      
+      for org_bandKey in sorted(sumWifiSpeedInfos["deviceBandKeys"][ds]):
         org_graphName = getGraphNameWithRxTx(org_bandKey, rxtxCfg, rxtxSwitch)
         org_ds        = f"{org_graphName}.{ds}"
         
